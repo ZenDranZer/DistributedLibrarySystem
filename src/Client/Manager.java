@@ -6,7 +6,7 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.Calendar;
-import java.util.Scanner;
+import LibraryServer.LibraryManagerInterface;
 
 public class Manager implements Runnable {
 
@@ -14,7 +14,7 @@ public class Manager implements Runnable {
     private String library;
     private String type;
     private String index;
-    private Scanner sc;
+    private BufferedReader sc;
     private File logFile;
     private PrintWriter logger;
 
@@ -23,7 +23,7 @@ public class Manager implements Runnable {
         this.library = clientID.substring(0,3);
         this.type = String.valueOf(clientID.charAt(3));
         this.index = clientID.substring(4);
-        sc = new Scanner(System.in);
+        sc = new BufferedReader(new InputStreamReader(System.in));
         logFile = new File("log_" + library + "_"+ clientID + ".log");
         try{
             if(!logFile.exists())
@@ -60,51 +60,53 @@ public class Manager implements Runnable {
             System.out.println("Hello " + clientID);
             while (op == 'Y' || op == 'y'){
                 printManagerOptions();
-                op = sc.next().charAt(0);
+                op = sc.readLine().charAt(0);
                 switch (op){
                     case '1':
-                        System.out.println("Enter Item ID: ");
-                        String itemID = sc.nextLine();
                         System.out.println("Enter Item Name: ");
-                        String itemName = sc.nextLine();
+                        String itemName = sc.readLine();
                         System.out.println("Enter Item quantity: ");
-                        Integer quantity = sc.nextInt();
-                        String reply = manager.addItem(clientID,itemID,itemName,quantity);
+                        Integer quantity = new Integer(sc.readLine());
+                        String reply = manager.addItem(clientID,itemName,quantity);
                         writeToLogFile(reply);
                         System.out.println("Reply from Server : " + reply);
+                        op = 'Y';
                         break;
                     case '2':
                         System.out.println("Enter Item ID: ");
-                        itemID = sc.nextLine();
+                        String itemID = sc.readLine();
                         System.out.println("Enter Item quantity: ");
-                        quantity = sc.nextInt();
+                        quantity = new Integer(sc.readLine());
                         reply = manager.removeItem(clientID,itemID,quantity);
                         writeToLogFile(reply);
                         System.out.println("Reply from Server : " + reply);
+                        op = 'Y';
                         break;
                     case '3':
                         reply = manager.listItemAvailability(clientID);
                         writeToLogFile(reply);
                         System.out.println("Reply from Server : \n" + reply);
+                        op = 'Y';
                         break;
                     case '4':
                         reply = manager.createUser(clientID);
                         writeToLogFile(reply);
                         System.out.println("Reply from Server : \n" + reply);
+                        op = 'Y';
                         break;
                     case '5':
                         reply = manager.createManager(clientID);
                         writeToLogFile(reply);
                         System.out.println("Reply from Server : \n" + reply);
+                        op = 'Y';
                         break;
                     case 'N':
                         writeToLogFile("Manager Quit : UserID : " + clientID);
-                        break;
                     case 'n':
                         writeToLogFile("Manager Quit : UserID : " + clientID);
-                        break;
                     default:
                         System.out.println("Wrong Selection!");
+                        op = 'Y';
                         break;
                 }
             }
@@ -112,9 +114,15 @@ public class Manager implements Runnable {
             System.exit(0);
         }catch(NotBoundException e){
             System.out.println("Server object is not bound.");
+            writeToLogFile("Not Bound Exception");
             e.printStackTrace();
         }catch(RemoteException e){
             System.out.println("Remote Exception.");
+            writeToLogFile("Remote Exception");
+            e.printStackTrace();
+        }catch(IOException e){
+            System.out.println("IO Exception.");
+            writeToLogFile("IO Exception");
             e.printStackTrace();
         }
     }

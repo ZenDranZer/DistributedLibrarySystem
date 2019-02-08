@@ -11,6 +11,9 @@ import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketException;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 public class Delegate implements Runnable{
 
@@ -72,35 +75,86 @@ class RequestHandler extends Thread {
     public void run() {
         String data = new String(receiver.getData()).trim();
         String[] request = data.split(":");
-        String reply = "Borrow Request : Server : " + myServer.getLibrary() +
-                "Status :";
+        String reply = "Borrow Request : Server : " + myServer.getLibrary();
         String userID,itemID,itemName;
         int numberOfDays;
         switch (request[1]){
+
             case "borrowFromOther" :
                 if(request.length != 5){
-                    reply +=  "Unsuccessful. " +
-                              "\nNote : Number of arguments are not sufficient";
+                    reply += "\nNote : Number of arguments are not sufficient" +
+                             "\nStatus : unsuccessful";
+                    break;
                 }
                 userID = request[2];
                 itemID = request[3];
                 numberOfDays = Integer.parseInt(request[4]);
-                reply = myServer.borrowFromOtherLibrary(userID,itemID,numberOfDays);
-                break;
+                if(!myServer.item.containsKey(itemID)){
+                    reply += "\n Note : ItemID does not exist here. \nStatus : unsuccessful";
+                    break;
+                }
+                Item requestedItem = myServer.item.get(itemID);
+                User currentUser = new User(userID);
+                requestedItem.setItemCount(requestedItem.getItemCount()-1);
+                myServer.item.remove(itemID);
+                myServer.item.put(itemID,requestedItem);
+                if(myServer.borrow.get(currentUser).isEmpty()){
+                    myServer.borrow.put(currentUser,new HashMap<>());
+                    myServer.borrow.get(currentUser).put(requestedItem,numberOfDays);
+                    reply += "Successful.";
+                }else {
+                    final Integer integer = myServer.borrow.get(currentUser).putIfAbsent(requestedItem, numberOfDays);
+                    if(integer != null)
+                        reply += "\n Note : you already have borrowed.\nStatus  : Unsuccessful";
+                    else
+                        reply += "Successful.";
+                }
+
             case "findAtOther" :
+                if(request.length != 3){
+                    reply += "\nNote : Number of arguments are not sufficient" +
+                             "Status : unsuccessful";
+                    break;
+                }
+                reply = reply + "Successful ";
+                itemName = request[2];
+                Iterator<Map.Entry<String,Item>> iterator = myServer.item.entrySet().iterator();
+                while(iterator.hasNext()){
+                    Map.Entry<String,Item> pair = iterator.next();
+                    if(pair.getValue().getItemName().equals(itemName))
+                        reply = reply + "\n" + pair.getKey() + " " +pair.getValue().getItemCount();
+                }
+
+            case "returnToOther" :
                 if(request.length != 4){
-                    reply +=  "Unsuccessful. " +
-                            "\nNote : Number of arguments are not sufficient";
+                    reply += "\nNote : Number of arguments are not sufficient" +
+                            "Status : unsuccessful";
+                    break;
                 }
                 userID = request[2];
-                itemName = request[3];
-
-                break;
-            case "returnToOther" :
-
-                break;
+                itemID = request[3];
+                currentUser = new User(userID);
+                Iterator<Map.Entry<Item,Integer>> value = myServer.borrow.get(currentUser).entrySet().iterator();
+                if(!value.hasNext()){
+                    reply += "\nNote : Not borrowed from this library. \n Status : unsuccessful";
+                    break;
+                }
+                boolean status = false;
+                while(value.hasNext()) {
+                    Map.Entry<Item, Integer> pair = value.next();
+                    if(pair.getKey().getItemID().equals(itemID)){
+                        myServer.borrow.get(currentUser).remove(pair.getKey());
+                        myServer.updateItemCount(itemID);
+                        reply += "Successful";
+                        status = true;
+                        break;
+                    }
+                }
+                if (status)
+                    reply += "\nNote : Item have not borrowed from this library.\n Status : unsuccessful";
              default:
-                 break;
+                 reply += "\nNote : Wrong option selection.\nStatus : Unsuccessful";
         }
+
     }
 }

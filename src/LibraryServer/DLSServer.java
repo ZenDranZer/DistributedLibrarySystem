@@ -7,14 +7,15 @@ import java.util.*;
 
 public class DLSServer extends UnicastRemoteObject implements LibraryUserInterface,LibraryManagerInterface {
 
-    protected HashMap<String,User> user;
-    protected HashMap<String,Manager> manager;
-    protected HashMap<String,Item> item;
-    protected HashMap<User,HashMap<Item,Integer>> borrow;
-    protected HashMap<Item, HashMap<User,Integer>> waitingQueue;
+    protected final HashMap<String,User> user;
+    protected final HashMap<String,Manager> manager;
+    protected final HashMap<String,Item> item;
+    protected final HashMap<User,HashMap<Item,Integer>> borrow;
+    protected final HashMap<Item, HashMap<User,Integer>> waitingQueue;
     private String library;
     private Integer next_User_ID;
     private Integer next_Manager_ID;
+    private Integer next_Item_ID;
     private File logFile;
     private PrintWriter logger;
 
@@ -30,8 +31,9 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         item = new HashMap<>();
         borrow = new HashMap<>();
         waitingQueue = new HashMap<>();
-        next_User_ID = 1005;
+        next_User_ID = 1003;
         next_Manager_ID = 1002;
+        next_Item_ID = 1003;
         logFile = new File("log_" + library + ".log");
         try{
             if(!logFile.exists())
@@ -42,7 +44,31 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             io.printStackTrace();
         }
         writeToLogFile("Server " + library + " Started.");
+        init();
+    }
 
+    private void init(){
+        String initManagerID = library + "M" + 1001;
+        Manager initManager = new Manager(initManagerID);
+        manager.put(initManagerID,initManager);
+        writeToLogFile("Initial manager created.");
+        String initUserID1001 = library + "U" + 1001;
+        String initUserID1002 = library + "U" + 1002;
+        User initUser1001 = new User(initUserID1001);
+        User initUser1002 = new User(initUserID1002);
+        user.put(initUserID1001,initUser1001);
+        user.put(initUserID1002,initUser1002);
+        writeToLogFile("Initial users created.");
+        String initItemID1001 = library + 1001;
+        String initItemID1002 = library + 1002;
+        String initItemID1003 = library + 1003;
+        Item initItem1001 = new Item(initItemID1001,"Distributed Systems",5);
+        Item initItem1002 = new Item(initItemID1002,"Parallel Programming",6);
+        Item initItem1003 = new Item(initItemID1003,"Algorithm Designs",7);
+        item.put(initItemID1001,initItem1001);
+        item.put(initItemID1002,initItem1002);
+        item.put(initItemID1003,initItem1003);
+        writeToLogFile("Initial items created.");
     }
 
     @Override
@@ -79,15 +105,25 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             requestedItem.setItemCount(requestedItem.getItemCount()-1);
             item.remove(itemID);
             item.put(itemID,requestedItem);
+            if(!borrow.isEmpty()){
+                if(!borrow.containsKey(currentUser)){
+                    borrow.put(currentUser,new HashMap<>());
+                }
             if(borrow.get(currentUser).isEmpty()){
             borrow.put(currentUser,new HashMap<>());
             borrow.get(currentUser).put(requestedItem,numberOfDays);
+                reply += "Successful.";
             }else {
                 final Integer integer = borrow.get(currentUser).putIfAbsent(requestedItem, numberOfDays);
                 if(integer != null)
                     reply += "Unsuccessful. \n Note : you already have borrowed.";
                 else
                     reply += "Successful.";
+            }
+            }else{
+                borrow.put(currentUser,new HashMap<>());
+                borrow.get(currentUser).put(requestedItem,numberOfDays);
+                reply += "Successful.";
             }
             writeToLogFile(reply);
             return reply;
@@ -145,56 +181,49 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             returnToOtherLibrary(userID,itemID);
         }
 
-        Iterator<Map.Entry<Item,Integer>> value = borrow.get(currentUser).entrySet().iterator();
+        HashMap<Item,Integer> set = borrow.get(currentUser);
+        Iterator<Map.Entry<Item,Integer>> value = set.entrySet().iterator();
         if(!value.hasNext()){
             message +="Unsuccessful. " +
                     "\nNote : You have not borrowed the item.";
             writeToLogFile(message);
             return message;
         }
-        boolean status = false;
         while(value.hasNext()) {
             Map.Entry<Item, Integer> pair = value.next();
             if(pair.getKey().getItemID().equals(itemID)){
                 borrow.get(currentUser).remove(pair.getKey());
                 updateItemCount(itemID);
-                status = true;
-                break;
+                message += "Successful ";
+                writeToLogFile(message);
+                //add functionality for automatic assignment of book which is being returned.
+                return message;
             }
         }
-        if(status){
-            message += "Successful ";
-            writeToLogFile(message);
-            //add functionality for automatic assignment of book which is being returned.
-            return message;
-        }else{
-            message += "Unsuccessful " +
+        message += "Unsuccessful " +
                     "\nNote: Item have never been borrowed";
-            writeToLogFile(message);
-            return message;
-        }
+        writeToLogFile(message);
+           return message;
+
     }
 
     @Override
-    public String addItem(String managerID, String itemID, String itemName, int quantity) throws RemoteException {
+    public String addItem(String managerID, String itemName, int quantity) throws RemoteException {
         String message =
                 "Add Item Request : Server : " + library +
-                        " Manager : " + managerID +
-                        " Item :" + itemID +
-                        "Status : ";
+                        " Manager : " + managerID ;
         if(managerID.charAt(3) != 'M'){
             message += "Unsuccessful. " +
                     "\nNote : You are not allowed to use this feature.";
             writeToLogFile(message);
             return message;
         }
-        Item currentItem = item.get(itemID);
-        if(currentItem == null){
-            item.put(itemID,new Item(itemID,itemName,quantity));
-        }else{
-            item.get(itemID).setItemCount(item.get(itemID).getItemCount()+quantity);
-        }
-        message += " Successful.";
+        String itemID = library + next_Item_ID;
+        Item currentItem = new Item(itemID);
+        item.put(itemID,currentItem);
+        next_Item_ID += 1;
+        message +=  " Item :" + itemID +
+                    "Status : Successful.";
         writeToLogFile(message);
         return message;
     }
@@ -378,7 +407,6 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return null;
     }
 
-
     private String findAtOtherLibrary(String itemName){
 
         return null;
@@ -388,7 +416,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
 
 
     }
-    private void updateItemCount(String itemid){
+
+    protected void updateItemCount(String itemid){
 
     }
 

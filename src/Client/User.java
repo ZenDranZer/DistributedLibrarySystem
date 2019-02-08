@@ -6,7 +6,8 @@ import java.rmi.RemoteException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
 import java.util.Calendar;
-import java.util.Scanner;
+import LibraryServer.LibraryUserInterface;
+
 
 public class User implements Runnable {
 
@@ -14,7 +15,7 @@ public class User implements Runnable {
     private String library;
     private String type;
     private String index;
-    private Scanner sc;
+    private BufferedReader sc;
     private File logFile;
     private PrintWriter logger;
 
@@ -24,7 +25,7 @@ public class User implements Runnable {
         this.library = clientID.substring(0,3);
         this.type = String.valueOf(clientID.charAt(3));
         this.index = clientID.substring(4);
-        sc = new Scanner(System.in);
+        sc = new BufferedReader(new InputStreamReader(System.in));
         logFile = new File("log_" + library + "_"+ clientID+ ".log");
         try{
             if(!logFile.exists())
@@ -58,44 +59,50 @@ public class User implements Runnable {
             System.out.println("Hello " + clientID);
         while (op == 'Y' || op == 'y'){
             printUserOptions();
-            op = sc.next().charAt(0);
+            op = sc.readLine().charAt(0);
             switch (op){
                 case '1':
+                    System.out.println("Borrow Item Section :");
                     System.out.println("Enter Item ID: ");
-                    String itemID = sc.nextLine();
+                    String itemID = sc.readLine();
                     System.out.println("Enter for how many days you want to borrow ?");
-                    Integer numberOfDays = sc.nextInt();
+                    Integer numberOfDays = new Integer(sc.readLine());
                     String reply = user.borrowItem(clientID,itemID,numberOfDays);
                     System.out.println("Reply from server : ");
                     if(reply.equals("outsourced")){
                         System.out.println("Your library does not have demanded item.");
                         System.out.println("Do you want to get it from another library (Y/N)?");
-                        String ch = sc.nextLine();
+                        String ch = sc.readLine();
                         if (ch.charAt(0) == 'Y' || ch.charAt(0) == 'y')
                             reply = user.borrowFromOtherLibrary(clientID,itemID,numberOfDays);
                         if(reply.equals("queue")){
                             System.out.println("Item is not available at all library, do wanna put yourself in a queue (Y/N) ? ");
-                            ch = sc.nextLine();
+                            ch = sc.readLine();
                             if (ch.charAt(0) == 'Y' || ch.charAt(0) == 'y')
                                 reply = user.addToQueue(clientID,itemID,numberOfDays);
                         }
                     }
                     writeToLogFile(reply);
                     System.out.println(reply);
+                    op = 'Y';
                     break;
                 case '2':
-                    System.out.println("Enter Item ID :");
-                    itemID = sc.nextLine();
+                    System.out.println("Find Item Section :");
+                    System.out.println("Enter Item Name :");
+                    itemID = sc.readLine();
                     reply = user.findItem(clientID,itemID);
                     writeToLogFile(reply);
                     System.out.println("Reply from server : " + reply);
+                    op = 'Y';
                     break;
                 case '3':
+                    System.out.println("Return Item Section :");
                     System.out.println("Enter Item ID :");
-                    itemID = sc.nextLine();
+                    itemID = sc.readLine();
                     reply = user.returnItem(clientID,itemID);
                     writeToLogFile(reply);
                     System.out.println("Reply from server : " + reply);
+                    op = 'Y';
                     break;
                 case 'N':
                     writeToLogFile("User Quit : UserID : " + clientID);
@@ -105,6 +112,7 @@ public class User implements Runnable {
                     break;
                 default:
                     System.out.println("Wrong Selection!");
+                    op = 'Y';
                     break;
             }
         }
@@ -117,6 +125,11 @@ public class User implements Runnable {
         }catch(RemoteException e){
             writeToLogFile("Remote Exception");
             System.out.println("Remote Exception.");
+            e.printStackTrace();
+        }
+        catch (IOException e){
+            writeToLogFile("IO Exception");
+            System.out.println("IO Exception.");
             e.printStackTrace();
         }
     }

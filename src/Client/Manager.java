@@ -102,8 +102,10 @@ public class Manager implements Runnable {
                         break;
                     case 'N':
                         writeToLogFile("Manager Quit : UserID : " + clientID);
+                        break;
                     case 'n':
                         writeToLogFile("Manager Quit : UserID : " + clientID);
+                        break;
                     default:
                         System.out.println("Wrong Selection!");
                         op = 'Y';

@@ -94,21 +94,30 @@ class RequestHandler extends Thread {
                     break;
                 }
                 Item requestedItem = myServer.item.get(itemID);
-                User currentUser = new User(userID);
-                requestedItem.setItemCount(requestedItem.getItemCount()-1);
-                myServer.item.remove(itemID);
-                myServer.item.put(itemID,requestedItem);
-                if(myServer.borrow.get(currentUser).isEmpty()){
-                    myServer.borrow.put(currentUser,new HashMap<>());
-                    myServer.borrow.get(currentUser).put(requestedItem,numberOfDays);
-                    reply += "Successful.";
-                }else {
-                    final Integer integer = myServer.borrow.get(currentUser).putIfAbsent(requestedItem, numberOfDays);
-                    if(integer != null)
-                        reply += "\n Note : you already have borrowed.\nStatus  : Unsuccessful";
-                    else
-                        reply += "Successful.";
+                if(requestedItem.getItemCount() == 0){
+                    reply += "\n Note : Not sufficient books. \nStatus : unsuccessful";
                 }
+                User currentUser = new User(userID);
+                HashMap<Item,Integer> entry;
+                requestedItem.setItemCount(requestedItem.getItemCount() - 1);
+                myServer.item.remove(itemID);
+                myServer.item.put(itemID, requestedItem);
+                if (myServer.borrow.containsKey(currentUser)) {
+                    if (myServer.borrow.get(currentUser).containsKey(requestedItem)) {
+                        reply += "Unsuccessful. \n Note : User have already borrowed.";
+                        break;
+                    } else {
+                        entry = myServer.borrow.get(currentUser);
+                        myServer.borrow.remove(currentUser);
+                    }
+                } else {
+                    entry = new HashMap<>();
+                    reply += "Successful.";
+                }
+                entry.put(requestedItem, numberOfDays);
+                myServer.borrow.put(currentUser, entry);
+                reply += "Successful.";
+                    break;
 
             case "findAtOther" :
                 if(request.length != 3){
@@ -133,7 +142,7 @@ class RequestHandler extends Thread {
                 }
                 userID = request[2];
                 itemID = request[3];
-                currentUser = new User(userID);
+                currentUser = myServer.user.get(userID);
                 Iterator<Map.Entry<Item,Integer>> value = myServer.borrow.get(currentUser).entrySet().iterator();
                 if(!value.hasNext()){
                     reply += "\nNote : Not borrowed from this library. \n Status : unsuccessful";

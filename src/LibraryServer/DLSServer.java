@@ -33,7 +33,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         waitingQueue = new HashMap<>();
         next_User_ID = 1003;
         next_Manager_ID = 1002;
-        next_Item_ID = 1003;
+        next_Item_ID = 1004;
         logFile = new File("log_" + library + ".log");
         try{
             if(!logFile.exists())
@@ -73,61 +73,47 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
 
     @Override
     public String borrowItem(String userID, String itemID, int numberOfDays) throws RemoteException {
-        User currentUser;
-        if(userID.charAt(3) == 'U')
-            currentUser = new User(userID);
-        else{
-            String message = "Borrow Request : Server : " + library +
-                    " User : " + userID +
-                    " Item :" + itemID +
-                    "Status : Unsuccessful. " +
-                    "\nNote :You are not allowed to use this feature.";
-            writeToLogFile(message);
-            return message;
+        User currentUser = user.get(userID);
+        String reply =  "Borrow Request : Server : " + library +
+                " User : " + userID +
+                " Item :" + itemID +
+                "Status : ";
+        if(!item.containsKey(itemID)){
+            reply += "outsourced.";
+            writeToLogFile(reply);
+            return "outsourced";
         }
+
         Item requestedItem;
         synchronized (this){
         requestedItem = item.get(itemID);
         }
-        String reply =  "Borrow Request : Server : " + library +
-                        " User : " + userID +
-                        " Item :" + requestedItem.getItemName() +
-                        "Status : ";
-        if(requestedItem == null){
-            reply += "outsourced.";
-            writeToLogFile(reply);
-            return "outsourced";
-        }else if(requestedItem.getItemCount() == 0){
+        if(requestedItem.getItemCount() == 0){
             reply += "outsourced";
             writeToLogFile(reply);
             return "outsourced";
-        }else{
-            requestedItem.setItemCount(requestedItem.getItemCount()-1);
+        }else {
+            HashMap<Item,Integer> entry;
+            requestedItem.setItemCount(requestedItem.getItemCount() - 1);
             item.remove(itemID);
-            item.put(itemID,requestedItem);
-            if(!borrow.isEmpty()){
-                if(!borrow.containsKey(currentUser)){
-                    borrow.put(currentUser,new HashMap<>());
+            item.put(itemID, requestedItem);
+            if (borrow.containsKey(currentUser)) {
+                if (borrow.get(currentUser).containsKey(requestedItem)) {
+                    reply += "Unsuccessful. \n Note : User have already borrowed.";
+                    return reply;
+                } else {
+                    entry = borrow.get(currentUser);
+                    borrow.remove(currentUser);
                 }
-            if(borrow.get(currentUser).isEmpty()){
-            borrow.put(currentUser,new HashMap<>());
-            borrow.get(currentUser).put(requestedItem,numberOfDays);
-                reply += "Successful.";
-            }else {
-                final Integer integer = borrow.get(currentUser).putIfAbsent(requestedItem, numberOfDays);
-                if(integer != null)
-                    reply += "Unsuccessful. \n Note : you already have borrowed.";
-                else
-                    reply += "Successful.";
+            } else {
+                entry = new HashMap<>();
             }
-            }else{
-                borrow.put(currentUser,new HashMap<>());
-                borrow.get(currentUser).put(requestedItem,numberOfDays);
-                reply += "Successful.";
-            }
+            entry.put(requestedItem, numberOfDays);
+            borrow.put(currentUser, entry);
+            reply += "Successful.";
             writeToLogFile(reply);
             return reply;
-            }
+        }
     }
 
     @Override
@@ -169,7 +155,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
                         " Item :" + itemID +
                         "Status : ";
         if(userID.charAt(3) == 'U')
-            currentUser = new User(userID);
+            currentUser = user.get(userID);
         else{
             message += "Unsuccessful. " +
                             "\nNote : You are not allowed to use this feature.";
@@ -180,6 +166,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         if(!itemID.substring(0,3).equals("CON")){
             returnToOtherLibrary(userID,itemID);
         }
+        if(borrow.containsKey(currentUser))
+            System.out.println("key");
+        else
+            System.out.println("no key");
 
         HashMap<Item,Integer> set = borrow.get(currentUser);
         Iterator<Map.Entry<Item,Integer>> value = set.entrySet().iterator();
@@ -219,7 +209,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             return message;
         }
         String itemID = library + next_Item_ID;
-        Item currentItem = new Item(itemID);
+        Item currentItem = new Item(itemID,itemName,quantity);
         item.put(itemID,currentItem);
         next_Item_ID += 1;
         message +=  " Item :" + itemID +
@@ -373,8 +363,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
 
     @Override
     public String addToQueue(String userID, String itemID,Integer numberOfDays) throws RemoteException {
-        Item currentItem = new Item(itemID);
-        User currentUser = new User(userID);
+        Item currentItem = item.get(itemID);
+        User currentUser = user.get(userID);
         HashMap<User,Integer> waitingUsers = waitingQueue.get(currentItem);
             waitingUsers.put(currentUser,numberOfDays);
             waitingUsers.remove(currentItem);
@@ -417,8 +407,11 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
 
     }
 
-    protected void updateItemCount(String itemid){
-
+    protected void updateItemCount(String itemID){
+        Item currentItem = item.get(itemID);
+        currentItem.setItemCount(currentItem.getItemCount()+1);
+        item.remove(itemID);
+        item.put(itemID,currentItem);
     }
 
     synchronized private void writeToLogFile(String message) {

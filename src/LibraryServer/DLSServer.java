@@ -1,6 +1,7 @@
 package LibraryServer;
 
 import java.io.*;
+import java.net.*;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
@@ -129,9 +130,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             return message;
         }
 
-        String reply;
-        reply = findAtOtherLibrary(itemName);
-        //inter server communication
+        String reply = "";
+       reply = findAtOtherLibrary(itemName);
         Iterator<Map.Entry<String,Item>> iterator = item.entrySet().iterator();
         while(iterator.hasNext()){
             Map.Entry<String,Item> pair = iterator.next();
@@ -164,7 +164,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
 
         if(!itemID.substring(0,3).equals("CON")){
-            returnToOtherLibrary(userID,itemID);
+            message = returnToOtherLibrary(userID,itemID);
+            return message;
         }
         if(borrow.containsKey(currentUser))
             System.out.println("key");
@@ -378,33 +379,197 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             return  message;
     }
 
+
     @Override
     public String borrowFromOtherLibrary(String userID, String itemID, Integer numberOfDays){
         User currentUser = user.get(userID);
-
-        //Correct this function
-        if(currentUser.isOutsourced()){
-            String message =
-                            "Outsourcing borrow Request : Server : " + library +
-                            " User : " + userID +
-                            " Item :" + itemID +
-                            "Status : Unsuccessful" +
-                            "\n Note : You can only borrow one book from other than your library";
-            writeToLogFile(message);
-            return message;
+        String reply =  "Borrow Request : Server : " + library +
+                        " User : " + userID +
+                        " Item :" + itemID +
+                        " Status : " ;
+        try {
+            DatagramSocket mySocket = new DatagramSocket();
+            InetAddress host = InetAddress.getLocalHost();
+            String result = "unsuccessful";
+            String request = library+":borrowFromOther:"+userID+":"+itemID+":"+numberOfDays;
+            boolean lib1 = false,lib2 = false;
+            String library1 = "";
+            String library2 = "";
+            int index1 = -1, index2 = -1;
+            int port1 = 1,port2 = 1;
+            if (library.equals("CON")){
+                index1 = 1;
+                index2 = 2;
+                lib1 = currentUser.getOutsourced()[index1];
+                lib2 = currentUser.getOutsourced()[index2];
+                library1 = "MCG";
+                library2 = "MON";
+                port1 = 1302;
+                port2 = 1303;
+            }
+            if (library.equals("MCG")){
+                index1 = 0;
+                index2 = 2;
+                lib1 = currentUser.getOutsourced()[index1];
+                lib2 = currentUser.getOutsourced()[index2];
+                library1 = "CON";
+                library2 = "MON";
+                port1 = 1301;
+                port2 = 1303;
+            }
+            if (library.equals("MON")){
+                index1 = 0;
+                index2 = 1;
+                lib1 = currentUser.getOutsourced()[index1];
+                lib2 = currentUser.getOutsourced()[index2];
+                library1 = "CON";
+                library2 = "MCG";
+                port1 = 1301;
+                port2 = 1302;
+            }
+            if(!lib1){
+                DatagramPacket sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port1);
+                mySocket.send(sendRequest);
+                byte[] receive = new byte[1024];
+                DatagramPacket receivedReply = new DatagramPacket(receive,receive.length);
+                mySocket.receive(receivedReply);
+                result = new String(receivedReply.getData()).trim();
+            }
+            if(result.equals("successful")){
+                reply += result + " Delegated Library : " + library1 ;
+                boolean[] isOutsourced = currentUser.getOutsourced();
+                isOutsourced[index1] = true;
+                currentUser.setOutsourced(isOutsourced);
+            }else if(!lib2){
+                DatagramPacket sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port2);
+                mySocket.send(sendRequest);
+                byte[] receive = new byte[1024];
+                DatagramPacket receivedReply = new DatagramPacket(receive,receive.length);
+                mySocket.receive(receivedReply);
+                result = new String(receivedReply.getData()).trim();
+            }
+            if(result.equals("successful")){
+                reply += result + " Delegated Library : " + library2 ;
+                boolean[] isOutsourced = currentUser.getOutsourced();
+                isOutsourced[index2] = true;
+                currentUser.setOutsourced(isOutsourced);
+            }
+            else{
+                reply += " Unsuccessful  Delegated Libraries : " + library2 + " " + library1;
+            }
+        }catch (SocketException e){
+            writeToLogFile("Socket Exception");
+            System.out.println("Socket Exception.");
+            e.printStackTrace();
+        }catch (UnknownHostException e){
+            writeToLogFile("Unknown host Exception");
+            System.out.println("Unknown host Exception.");
+            e.printStackTrace();
+        }catch (IOException e){
+            writeToLogFile("IO Exception");
+            System.out.println("IO Exception.");
+            e.printStackTrace();
         }
-        //Inter Server Communication
-        return null;
+        writeToLogFile(reply);
+        return reply;
     }
 
     private String findAtOtherLibrary(String itemName){
+        String reply = "";
+        try{
+        DatagramSocket mySocket = new DatagramSocket();
+        InetAddress host = InetAddress.getLocalHost();
+        int port1 = -1, port2 = -1;
+            if (library.equals("CON")){
+                port1 = 1302;
+                port2 = 1303;
+            }
+            if (library.equals("MCG")){
+                port1 = 1301;
+                port2 = 1303;
+            }
+            if (library.equals("MON")){
+                port1 = 1301;
+                port2 = 1302;
+            }
+            String request = library+":findAtOther:"+itemName;
+            DatagramPacket sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port1);
+            mySocket.send(sendRequest);
+            byte[] receive = new byte[1024];
+            DatagramPacket receivedReply = new DatagramPacket(receive,receive.length);
+            mySocket.receive(receivedReply);
+            reply += new String(receivedReply.getData()).trim();
 
-        return null;
+
+            System.out.println("After first lib");
+            sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port2);
+            mySocket.send(sendRequest);
+            receive = new byte[1024];
+            receivedReply = new DatagramPacket(receive,receive.length);
+            mySocket.receive(receivedReply);
+            reply += new String(receivedReply.getData()).trim();
+        }catch (SocketException e){
+            writeToLogFile("Socket Exception");
+            System.out.println("Socket Exception.");
+            e.printStackTrace();
+        }catch (UnknownHostException e){
+            writeToLogFile("Unknown host Exception");
+            System.out.println("Unknown host Exception.");
+            e.printStackTrace();
+        }catch (IOException e){
+            writeToLogFile("IO Exception");
+            System.out.println("IO Exception.");
+            e.printStackTrace();
+        }
+        writeToLogFile(reply);
+        return reply;
     }
 
-    private void returnToOtherLibrary(String userID, String itemID){
-
-
+    private String returnToOtherLibrary(String userID, String itemID){
+        String reply ="";
+        try{
+            DatagramSocket mySocket = new DatagramSocket();
+            InetAddress host = InetAddress.getLocalHost();
+            int port = -1;
+            String library1 = "";
+            if (itemID.substring(0,3).equals("CON")){
+                port = 1301;
+                library1 = "CON";
+            }
+            if (itemID.substring(0,3).equals("MCG")){
+                port = 1302;
+                library1 = "MCG";
+            }
+            if (itemID.substring(0,3).equals("MON")){
+                port = 1303;
+                library1 = "MON";
+            }
+            String request = library+":findAtOther:"+userID+":"+itemID;
+            DatagramPacket sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port);
+            mySocket.send(sendRequest);
+            byte[] receive = new byte[1024];
+            DatagramPacket receivedReply = new DatagramPacket(receive,receive.length);
+            mySocket.receive(receivedReply);
+            reply =  "Borrow Request : Server : " + library +
+                    " User : " + userID +
+                    " Item :" + itemID +
+                    " Status : Successful" +
+                    " Delegated Library : " + library1 ;
+        }catch (SocketException e){
+            writeToLogFile("Socket Exception");
+            System.out.println("Socket Exception.");
+            e.printStackTrace();
+        }catch (UnknownHostException e){
+            writeToLogFile("Unknown host Exception");
+            System.out.println("Unknown host Exception.");
+            e.printStackTrace();
+        }catch (IOException e){
+            writeToLogFile("IO Exception");
+            System.out.println("IO Exception.");
+            e.printStackTrace();
+        }
+        writeToLogFile(reply);
+        return reply;
     }
 
     protected void updateItemCount(String itemID){

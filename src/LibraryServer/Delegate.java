@@ -19,29 +19,28 @@ public class Delegate implements Runnable{
 
     private Integer port;
     private DLSServer library;
-    private DatagramSocket mySocket = null;
-    private DatagramPacket receiver;
-    private byte collector[];
 
     public Delegate(Integer port, DLSServer library){
         this.port = port;
         this.library = library;
-        try {
-            mySocket = new DatagramSocket(this.port);
-        }catch (SocketException e){
-            System.out.println("Socket Exception");
-            e.printStackTrace();
-        }
-        collector = new byte[1024];
-        receiver = new DatagramPacket(collector,collector.length);
     }
 
     @Override
     public void run() {
+        DatagramSocket mySocket = null;
+        try {
+            mySocket = new DatagramSocket(this.port);
+        } catch (SocketException e) {
+            e.printStackTrace();
+        }
         while(true){
             try {
+                byte collector[] = new byte[1024];
+                DatagramPacket receiver = new DatagramPacket(collector,collector.length);
                 mySocket.receive(receiver);
-                new RequestHandler(library,mySocket,receiver).start();
+                Thread newThread = new Thread(new RequestHandler(library,mySocket,receiver));
+                newThread.start();
+                System.out.println("in run");
             }catch(IOException e){
                 System.out.println("Input/Output exception");
                 e.printStackTrace();
@@ -50,7 +49,7 @@ public class Delegate implements Runnable{
     }
 }
 
-class RequestHandler extends Thread {
+class RequestHandler implements Runnable {
 
     private DLSServer myServer = null;
     private DatagramSocket mySocket = null;
@@ -60,42 +59,43 @@ class RequestHandler extends Thread {
         this.myServer = myServer;
         this.mySocket = mySocket;
         this.receiver = receiver;
+        System.out.println("in constructor");
     }
     /*format |    ServerName:RequestType:Argments     |
     ServerName = from which Server request came
     Request type =  Borrow from other lib.
                     Find at other lib.
                     Return to other lib.
-     Arguments = UserID
-                 ItemID
+     Arguments = [UserID]
+                 [ItemID]
                  [ItemNama]
                  [NumberOfDays]
      */
     @Override
     public void run() {
         String data = new String(receiver.getData()).trim();
+        System.out.println("in RequestHandler run\n" + data );
         String[] request = data.split(":");
-        String reply = "Borrow Request : Server : " + myServer.getLibrary();
+        String reply = "";
         String userID,itemID,itemName;
         int numberOfDays;
         switch (request[1]){
 
             case "borrowFromOther" :
                 if(request.length != 5){
-                    reply += "\nNote : Number of arguments are not sufficient" +
-                             "\nStatus : unsuccessful";
+                    reply = "unsuccessful";
                     break;
                 }
                 userID = request[2];
                 itemID = request[3];
                 numberOfDays = Integer.parseInt(request[4]);
                 if(!myServer.item.containsKey(itemID)){
-                    reply += "\n Note : ItemID does not exist here. \nStatus : unsuccessful";
+                    reply = "unsuccessful";
                     break;
                 }
                 Item requestedItem = myServer.item.get(itemID);
                 if(requestedItem.getItemCount() == 0){
-                    reply += "\n Note : Not sufficient books. \nStatus : unsuccessful";
+                    reply = "unsuccessful";
                 }
                 User currentUser = new User(userID);
                 HashMap<Item,Integer> entry;
@@ -104,7 +104,7 @@ class RequestHandler extends Thread {
                 myServer.item.put(itemID, requestedItem);
                 if (myServer.borrow.containsKey(currentUser)) {
                     if (myServer.borrow.get(currentUser).containsKey(requestedItem)) {
-                        reply += "Unsuccessful. \n Note : User have already borrowed.";
+                        reply = "unsuccessful";
                         break;
                     } else {
                         entry = myServer.borrow.get(currentUser);
@@ -112,32 +112,30 @@ class RequestHandler extends Thread {
                     }
                 } else {
                     entry = new HashMap<>();
-                    reply += "Successful.";
+                    reply = "successful.";
                 }
                 entry.put(requestedItem, numberOfDays);
                 myServer.borrow.put(currentUser, entry);
-                reply += "Successful.";
+                reply = "successful.";
                     break;
 
             case "findAtOther" :
                 if(request.length != 3){
-                    reply += "\nNote : Number of arguments are not sufficient" +
-                             "Status : unsuccessful";
+                    reply = "unsuccessful";
                     break;
                 }
-                reply = reply + "Successful ";
                 itemName = request[2];
+                System.out.println("Item name : " + itemName);
                 Iterator<Map.Entry<String,Item>> iterator = myServer.item.entrySet().iterator();
                 while(iterator.hasNext()){
                     Map.Entry<String,Item> pair = iterator.next();
                     if(pair.getValue().getItemName().equals(itemName))
                         reply = reply + "\n" + pair.getKey() + " " +pair.getValue().getItemCount();
                 }
-
+                break;
             case "returnToOther" :
                 if(request.length != 4){
-                    reply += "\nNote : Number of arguments are not sufficient" +
-                            "Status : unsuccessful";
+                    reply = "unsuccessful";
                     break;
                 }
                 userID = request[2];
@@ -145,7 +143,7 @@ class RequestHandler extends Thread {
                 currentUser = myServer.user.get(userID);
                 Iterator<Map.Entry<Item,Integer>> value = myServer.borrow.get(currentUser).entrySet().iterator();
                 if(!value.hasNext()){
-                    reply += "\nNote : Not borrowed from this library. \n Status : unsuccessful";
+                    reply = "unsuccessful";
                     break;
                 }
                 boolean status = false;
@@ -154,16 +152,26 @@ class RequestHandler extends Thread {
                     if(pair.getKey().getItemID().equals(itemID)){
                         myServer.borrow.get(currentUser).remove(pair.getKey());
                         myServer.updateItemCount(itemID);
-                        reply += "Successful";
+                        Item currentItem = myServer.item.get(itemID);
+                        currentItem.setItemCount(currentItem.getItemCount()+1);
+                        myServer.item.remove(itemID);
+                        myServer.item.put(itemID,currentItem);
+                        reply = "successful";
                         status = true;
                         break;
                     }
                 }
                 if (status)
-                    reply += "\nNote : Item have not borrowed from this library.\n Status : unsuccessful";
+                    reply = "unsuccessful";
              default:
-                 reply += "\nNote : Wrong option selection.\nStatus : Unsuccessful";
+                 reply = "unsuccessful";
         }
-
+        DatagramPacket sender = new DatagramPacket(reply.getBytes(), reply.length(), receiver.getAddress(), receiver.getPort());
+        try {
+            mySocket.send(sender); // send the response DatagramPacket object to the requester again
+        } catch (IOException e) {
+            System.out.println("IO Exception");
+            e.printStackTrace();
+        }
     }
 }

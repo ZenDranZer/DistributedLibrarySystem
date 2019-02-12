@@ -133,13 +133,13 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
 
         String reply = "";
-       reply = findAtOtherLibrary(itemName);
         Iterator<Map.Entry<String,Item>> iterator = item.entrySet().iterator();
         while(iterator.hasNext()){
             Map.Entry<String,Item> pair = iterator.next();
             if(pair.getValue().getItemName().equals(itemName))
                 reply = reply + "\n" + pair.getKey() + " " +pair.getValue().getItemCount();
         }
+        reply += findAtOtherLibrary(itemName);
         reply = reply + "\nFind Request : Server : " + library +
                         " User : " + userID +
                         " Item :" + itemName +
@@ -519,8 +519,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             DatagramPacket receivedReply = new DatagramPacket(receive,receive.length);
             mySocket.receive(receivedReply);
             reply += new String(receivedReply.getData()).trim();
-
-
+            reply += "\n";
             System.out.println("After first lib");
             sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port2);
             mySocket.send(sendRequest);

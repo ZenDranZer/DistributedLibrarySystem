@@ -23,6 +23,6 @@ public interface LibraryManagerInterface extends Remote {
     public String createManager(String managerID) throws RemoteException;
 
     //This method will validate userID
-    public boolean validateClientID(String userID) throws RemoteException;
+    public String validateClientID(String userID) throws RemoteException;
 
 }

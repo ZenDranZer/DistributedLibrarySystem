@@ -51,12 +51,16 @@ public class User implements Runnable {
         try {
             Registry registry = LocateRegistry.getRegistry(1304);
             LibraryUserInterface user = (LibraryUserInterface) registry.lookup(library);
-            if(!user.validateClientID(clientID)) {
+            String[] response = user.validateClientID(clientID).split(":");
+            if(response[0].equals("false")) {
                 System.out.println("Provided ID is wrong!! please invoke the client again.");
                 writeToLogFile("User id: " + clientID + " Provided ID is wrong!! please invoke the client again.");
                 System.exit(0);
             }
-            System.out.println("Hello " + clientID);
+            System.out.println("Hello " + clientID + " Messages from Server");
+            for (String message : response) {
+                System.out.println("Message : " + message);
+            }
         while (op == 'Y' || op == 'y'){
             printUserOptions();
             op = sc.readLine().charAt(0);

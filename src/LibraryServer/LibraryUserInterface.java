@@ -17,7 +17,7 @@ public interface LibraryUserInterface extends Remote {
     public String returnItem(String userID, String itemID) throws RemoteException;
 
     //This method will validate userID
-    public boolean validateClientID(String userID) throws RemoteException;
+    public String validateClientID(String userID) throws RemoteException;
 
     //This method will add user in a queue.
     public String addToQueue(String userID, String itemID,Integer numberOfDays) throws RemoteException;

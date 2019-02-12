@@ -52,7 +52,7 @@ public class Manager implements Runnable {
         try {
             Registry registry = LocateRegistry.getRegistry(1304);
             LibraryManagerInterface manager = (LibraryManagerInterface) registry.lookup(library);
-            if(!manager.validateClientID(clientID)) {
+            if(manager.validateClientID(clientID).equals("false")) {
                 System.out.println("Provided ID is wrong!! please invoke the client again.");
                 writeToLogFile("UserID : " + clientID +" Provided ID is wrong!! please invoke the client again. ");
                 System.exit(0);

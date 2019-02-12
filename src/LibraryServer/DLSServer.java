@@ -13,6 +13,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
     protected final HashMap<String,Item> item;
     protected final HashMap<User,HashMap<Item,Integer>> borrow;
     protected final HashMap<Item, HashMap<User,Integer>> waitingQueue;
+    private final HashMap<User,ArrayList<String>> messagesForUser;
     private String library;
     private Integer next_User_ID;
     private Integer next_Manager_ID;
@@ -32,6 +33,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         item = new HashMap<>();
         borrow = new HashMap<>();
         waitingQueue = new HashMap<>();
+        messagesForUser = new HashMap<>();
         next_User_ID = 1003;
         next_Manager_ID = 1002;
         next_Item_ID = 1004;
@@ -163,20 +165,16 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             return message;
         }
 
-        if(!itemID.substring(0,3).equals("CON")){
+        if(!itemID.substring(0,3).equals(library)){
             message = returnToOtherLibrary(userID,itemID);
             return message;
         }
-        if(borrow.containsKey(currentUser))
-            System.out.println("key");
-        else
-            System.out.println("no key");
-
+        if(borrow.containsKey(currentUser)){
         HashMap<Item,Integer> set = borrow.get(currentUser);
         Iterator<Map.Entry<Item,Integer>> value = set.entrySet().iterator();
         if(!value.hasNext()){
             message +="Unsuccessful. " +
-                    "\nNote : You have not borrowed the item.";
+                    "\nNote : You have no borrowed item.";
             writeToLogFile(message);
             return message;
         }
@@ -185,11 +183,12 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             if(pair.getKey().getItemID().equals(itemID)){
                 borrow.get(currentUser).remove(pair.getKey());
                 updateItemCount(itemID);
+                automaticAssignmentOfBooks(itemID);
                 message += "Successful ";
                 writeToLogFile(message);
-                //add functionality for automatic assignment of book which is being returned.
                 return message;
             }
+        }
         }
         message += "Unsuccessful " +
                     "\nNote: Item have never been borrowed";
@@ -337,48 +336,69 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
     }
 
     @Override
-    public boolean validateClientID(String id){
+    public String validateClientID(String id){
         User currentUser;
         Manager currentManager;
         if(id == null){
             writeToLogFile("Validate ID request : ID : "+ id);
-            return false;
+            return "false";
         }
         else if(id.charAt(3) == 'U'){
             synchronized(this){
             currentUser = user.get(id);
             }
-            writeToLogFile("Validate ID request : ID : "+ id);
-            return currentUser != null;
+            String message;
+            if(currentUser == null){
+                writeToLogFile("Validate ID request : ID : "+ id +" Status : Unsuccessful");
+                return "false";
+            }else{
+                message = "true";
+                if(messagesForUser.containsKey(currentUser)){
+                    ArrayList<String> messages = messagesForUser.get(currentUser);
+                    for (String message1 : messages) {
+                        message += ":" + message1;
+                    }
+                }
+                return message;
+            }
         }
         else if(id.charAt(3) == 'M'){
             synchronized (this){
             currentManager = manager.get(id);
             }
-            writeToLogFile("Validate ID request : ID : "+ id);
-            return currentManager != null;
+            String message;
+            if(currentManager == null){
+                writeToLogFile("Validate ID request : ID : "+ id +" Status : Unsuccessful");
+                return "false";
+            }else{
+                writeToLogFile("Validate ID request : ID : "+ id +" Status : Successful");
+                return  "true";
+            }
         }
-        writeToLogFile("Validate ID request : ID : "+ id);
-        return false;
+        writeToLogFile("Validate ID request : ID : "+ id + " Status : Unsuccessful");
+        return "false";
     }
 
     @Override
     public String addToQueue(String userID, String itemID,Integer numberOfDays) throws RemoteException {
         Item currentItem = item.get(itemID);
         User currentUser = user.get(userID);
-        HashMap<User,Integer> waitingUsers = waitingQueue.get(currentItem);
-            waitingUsers.put(currentUser,numberOfDays);
-            waitingUsers.remove(currentItem);
+        HashMap<User,Integer> waitingUsers = new HashMap<>();
+        if(!waitingQueue.containsKey(currentItem)){
             waitingQueue.put(currentItem,waitingUsers);
-            String message =
-                            "Add to Queue Request : Server : " + library +
-                            " User ID :" + userID +
-                            " Item ID : "+ itemID +
-                            " Status : Successful.";
-            writeToLogFile(message);
-            return  message;
+        }
+        waitingUsers = waitingQueue.get(currentItem);
+        waitingUsers.put(currentUser,numberOfDays);
+        waitingUsers.remove(currentUser);
+        waitingQueue.put(currentItem,waitingUsers);
+        String message =
+                "Add to Queue Request : Server : " + library +
+                        " User ID :" + userID +
+                        " Item ID : "+ itemID +
+                        " Status : Successful.";
+        writeToLogFile(message);
+        return  message;
     }
-
 
     @Override
     public String borrowFromOtherLibrary(String userID, String itemID, Integer numberOfDays){
@@ -588,6 +608,36 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             logger.flush();
         } catch (Exception ex) {
             ex.printStackTrace();
+        }
+    }
+
+    private void automaticAssignmentOfBooks(String itemID) {
+        Item currentItem = item.get(itemID);
+        if(waitingQueue.containsKey(currentItem)){
+            HashMap<User,Integer> userList = waitingQueue.get(currentItem);
+            Iterator<Map.Entry<User,Integer>> iterator = userList.entrySet().iterator();
+            if(iterator.hasNext()){
+                Map.Entry<User,Integer> pair = iterator.next();
+                User currentUser =  pair.getKey();
+                HashMap<Item,Integer> borrowedItems;
+                if(!borrow.containsKey(currentUser)){
+                   borrowedItems = new HashMap<>();
+                }else{
+                    borrowedItems = borrow.get(currentUser);
+                    borrow.remove(currentUser);
+                }
+                borrowedItems.put(currentItem,pair.getValue());
+                borrow.put(currentUser,borrowedItems);
+                ArrayList<String> messages;
+                if(messagesForUser.containsKey(currentUser)){
+                    messages = messagesForUser.get(currentUser);
+                }else{
+                    messages = new ArrayList<>();
+                }
+                String message = "Borrow Request Status : Successful UserID : " + currentUser.getUserID() +" ItemID : " + itemID;
+                messages.add(message);
+                writeToLogFile(message);
+            }
         }
     }
 }

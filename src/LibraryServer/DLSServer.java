@@ -17,7 +17,6 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
     private String library;
     private Integer next_User_ID;
     private Integer next_Manager_ID;
-    private Integer next_Item_ID;
     private File logFile;
     private PrintWriter logger;
 
@@ -36,8 +35,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         messagesForUser = new HashMap<>();
         next_User_ID = 1003;
         next_Manager_ID = 1002;
-        next_Item_ID = 1004;
-        logFile = new File("log_" + library + ".log");
+        logFile = new File("C:\\Users\\SARVESH\\Documents\\DistributedLibrarySystem\\src\\Logs\\log_" + library + ".log");
         try{
             if(!logFile.exists())
                 logFile.createNewFile();
@@ -198,7 +196,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
     }
 
     @Override
-    public String addItem(String managerID, String itemName, int quantity) throws RemoteException {
+    public String addItem(String managerID, String itemID,String itemName, int quantity) throws RemoteException {
         String message =
                 "Add Item Request : Server : " + library +
                         " Manager : " + managerID ;
@@ -208,12 +206,25 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             writeToLogFile(message);
             return message;
         }
-        String itemID = library + next_Item_ID;
-        Item currentItem = new Item(itemID,itemName,quantity);
-        item.put(itemID,currentItem);
-        next_Item_ID += 1;
-        message +=  " Item :" + itemID +
+        Item currentItem;
+        if(authenticateItemID(itemID)){
+            if(item.containsKey(itemID)){
+                currentItem = item.get(itemID);
+                currentItem.setItemCount(currentItem.getItemCount()+quantity);
+                item.remove(itemID);
+            }else{
+                currentItem = new Item(itemID,itemName,quantity);
+            }
+            item.put(itemID,currentItem);
+            message +=  " Item :" + itemID +
                     "Status : Successful.";
+            automaticAssignmentOfBooks(itemID);
+            writeToLogFile(message);
+            return message;
+        }
+        message +=  " Item :" + itemID +
+                "Status : Unsuccessful." +
+                "\n Note : Invalid ItemID.";
         writeToLogFile(message);
         return message;
     }
@@ -232,13 +243,13 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             writeToLogFile(message);
             return message;
         }
-        Item currentItem = item.get(itemID);
-        if(currentItem == null){
+        if(!item.containsKey(itemID)){
             message += "Unsuccessful. " +
                     "\nNote : The item do not exist in inventory.";
             writeToLogFile(message);
             return message;
         }
+        Item currentItem = item.get(itemID);
         if(currentItem.getItemCount() < quantity){
             quantity = quantity - currentItem.getItemCount();
             item.remove(itemID);
@@ -251,8 +262,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             currentItem.setItemCount(currentItem.getItemCount() - quantity);
             item.remove(itemID);
             item.put(itemID,currentItem);
-            message += "Successful." +
-                    "\nNote : Number of items in the inventory is greater than desired quantity.";
+            message += "Successful.";
             writeToLogFile(message);
             return message;
         }else{
@@ -467,15 +477,17 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
                 DatagramPacket receivedReply = new DatagramPacket(receive,receive.length);
                 mySocket.receive(receivedReply);
                 result = new String(receivedReply.getData()).trim();
+                System.out.println(result);
             }
             if(result.equals("successful")){
+                System.out.println(result);
                 reply += result + " Delegated Library : " + library2 ;
                 boolean[] isOutsourced = currentUser.getOutsourced();
                 isOutsourced[index2] = true;
                 currentUser.setOutsourced(isOutsourced);
             }
             else{
-                reply += " Unsuccessful  Delegated Libraries : " + library2 + " " + library1;
+                reply = "queue";
             }
         }catch (SocketException e){
             writeToLogFile("Socket Exception");
@@ -520,7 +532,6 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             mySocket.receive(receivedReply);
             reply += new String(receivedReply.getData()).trim();
             reply += "\n";
-            System.out.println("After first lib");
             sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port2);
             mySocket.send(sendRequest);
             receive = new byte[1024];
@@ -608,6 +619,12 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         } catch (Exception ex) {
             ex.printStackTrace();
         }
+    }
+
+    private boolean authenticateItemID(String id){
+        if(id.substring(0,3).equals(library) && id.length() == 7)
+            return true;
+        return false;
     }
 
     private void automaticAssignmentOfBooks(String itemID) {

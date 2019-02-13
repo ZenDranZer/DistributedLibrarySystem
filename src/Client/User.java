@@ -26,7 +26,7 @@ public class User implements Runnable {
         this.type = String.valueOf(clientID.charAt(3));
         this.index = clientID.substring(4);
         sc = new BufferedReader(new InputStreamReader(System.in));
-        logFile = new File("log_" + library + "_"+ clientID+ ".log");
+        logFile = new File("C:\\Users\\SARVESH\\Documents\\DistributedLibrarySystem\\src\\Logs\\log_" + library + "_"+ clientID+ ".log");
         try{
             if(!logFile.exists())
                 logFile.createNewFile();

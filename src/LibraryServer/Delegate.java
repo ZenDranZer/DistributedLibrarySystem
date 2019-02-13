@@ -40,7 +40,7 @@ public class Delegate implements Runnable{
                 mySocket.receive(receiver);
                 Thread newThread = new Thread(new RequestHandler(library,mySocket,receiver));
                 newThread.start();
-                System.out.println("in run");
+
             }catch(IOException e){
                 System.out.println("Input/Output exception");
                 e.printStackTrace();
@@ -59,7 +59,6 @@ class RequestHandler implements Runnable {
         this.myServer = myServer;
         this.mySocket = mySocket;
         this.receiver = receiver;
-        System.out.println("in constructor");
     }
     /*format |    ServerName:RequestType:Argments     |
     ServerName = from which Server request came
@@ -74,7 +73,6 @@ class RequestHandler implements Runnable {
     @Override
     public void run() {
         String data = new String(receiver.getData()).trim();
-        System.out.println("in RequestHandler run\n" + data );
         String[] request = data.split(":");
         String reply = "";
         String userID,itemID,itemName;
@@ -112,11 +110,11 @@ class RequestHandler implements Runnable {
                     }
                 } else {
                     entry = new HashMap<>();
-                    reply = "successful.";
+                    reply = "successful";
                 }
                 entry.put(requestedItem, numberOfDays);
                 myServer.borrow.put(currentUser, entry);
-                reply = "successful.";
+                reply = "successful";
                     break;
 
             case "findAtOther" :
@@ -125,7 +123,6 @@ class RequestHandler implements Runnable {
                     break;
                 }
                 itemName = request[2];
-                System.out.println("Item name : " + itemName);
                 Iterator<Map.Entry<String,Item>> iterator = myServer.item.entrySet().iterator();
                 while(iterator.hasNext()){
                     Map.Entry<String,Item> pair = iterator.next();

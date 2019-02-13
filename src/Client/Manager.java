@@ -24,7 +24,7 @@ public class Manager implements Runnable {
         this.type = String.valueOf(clientID.charAt(3));
         this.index = clientID.substring(4);
         sc = new BufferedReader(new InputStreamReader(System.in));
-        logFile = new File("log_" + library + "_"+ clientID + ".log");
+        logFile = new File("C:\\Users\\SARVESH\\Documents\\DistributedLibrarySystem\\src\\Logs\\log_" + library + "_"+ clientID + ".log");
         try{
             if(!logFile.exists())
                 logFile.createNewFile();
@@ -63,18 +63,20 @@ public class Manager implements Runnable {
                 op = sc.readLine().charAt(0);
                 switch (op){
                     case '1':
+                        System.out.println("Enter Item ID: ");
+                        String itemID = sc.readLine();
                         System.out.println("Enter Item Name: ");
                         String itemName = sc.readLine();
                         System.out.println("Enter Item quantity: ");
                         Integer quantity = new Integer(sc.readLine());
-                        String reply = manager.addItem(clientID,itemName,quantity);
+                        String reply = manager.addItem(clientID,itemID,itemName,quantity);
                         writeToLogFile(reply);
                         System.out.println("Reply from Server : " + reply);
                         op = 'Y';
                         break;
                     case '2':
                         System.out.println("Enter Item ID: ");
-                        String itemID = sc.readLine();
+                        itemID = sc.readLine();
                         System.out.println("Enter Item quantity: ");
                         quantity = new Integer(sc.readLine());
                         reply = manager.removeItem(clientID,itemID,quantity);

@@ -6,7 +6,6 @@ package LibraryServer;
 * Library MON port = 1303
 * */
 
-
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -155,10 +154,7 @@ class RequestHandler implements Runnable {
                         synchronized (lock) {
                             myServer.borrow.get(currentUser).remove(pair.getKey());
                             myServer.updateItemCount(itemID);
-                            Item currentItem = myServer.item.get(itemID);
-                            currentItem.setItemCount(currentItem.getItemCount() + 1);
-                            myServer.item.remove(itemID);
-                            myServer.item.put(itemID, currentItem);
+                            myServer.automaticAssignmentOfBooks(itemID);
                         }
                         reply = "successful";
                         status = true;

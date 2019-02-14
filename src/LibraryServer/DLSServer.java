@@ -300,7 +300,9 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             return message;
         }else if(currentItem.getItemCount() < quantity){
             quantity = quantity - currentItem.getItemCount();
-            synchronized (lock){item.remove(itemID);}
+            synchronized (lock){item.remove(itemID);
+            currentItem.setItemCount(0);
+            item.put(itemID,currentItem);}
             message+= " Partially successful." +
                       "\nNote : Number of items in the inventory is less than desired quantity." +
                       "\n Balance quantity :" + quantity;
@@ -343,7 +345,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         synchronized (lock) { iterator = item.entrySet().iterator(); }
         while(iterator.hasNext()){
             Map.Entry<String,Item> pair = iterator.next();
-            reply += pair.getValue().getItemName() + " " + pair.getValue().getItemCount() + "\n";
+            reply += "\n" + pair.getValue().getItemName() + " " + pair.getValue().getItemCount() + "\n";
         }
         writeToLogFile(reply);
         return reply;
@@ -697,7 +699,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
     /**If the returned item is in the waiting queue list, it will
      * automatically assign the item to the first user and send
      * a message to the user.*/
-    private void automaticAssignmentOfBooks(String itemID) {
+    protected void automaticAssignmentOfBooks(String itemID) {
         Item currentItem = item.get(itemID);
         if(waitingQueue.containsKey(currentItem)){
             HashMap<User,Integer> userList;

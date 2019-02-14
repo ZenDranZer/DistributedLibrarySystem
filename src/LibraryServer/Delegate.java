@@ -54,11 +54,13 @@ class RequestHandler implements Runnable {
     private DLSServer myServer = null;
     private DatagramSocket mySocket = null;
     private DatagramPacket receiver = null;
+    private final Object lock;
 
     public RequestHandler(DLSServer myServer,DatagramSocket mySocket,DatagramPacket receiver){
         this.myServer = myServer;
         this.mySocket = mySocket;
         this.receiver = receiver;
+        lock = new Object();
     }
     /*format |    ServerName:RequestType:Argments     |
     ServerName = from which Server request came
@@ -91,29 +93,30 @@ class RequestHandler implements Runnable {
                     reply = "unsuccessful";
                     break;
                 }
-                Item requestedItem = myServer.item.get(itemID);
+                Item requestedItem;
+                synchronized (lock) {requestedItem = myServer.item.get(itemID);}
                 if(requestedItem.getItemCount() == 0){
                     reply = "unsuccessful";
                 }
                 User currentUser = new User(userID);
                 HashMap<Item,Integer> entry;
                 requestedItem.setItemCount(requestedItem.getItemCount() - 1);
-                myServer.item.remove(itemID);
-                myServer.item.put(itemID, requestedItem);
+                synchronized (lock) {myServer.item.remove(itemID);
+                myServer.item.put(itemID, requestedItem);}
                 if (myServer.borrow.containsKey(currentUser)) {
                     if (myServer.borrow.get(currentUser).containsKey(requestedItem)) {
                         reply = "unsuccessful";
                         break;
                     } else {
-                        entry = myServer.borrow.get(currentUser);
-                        myServer.borrow.remove(currentUser);
+                        synchronized (lock) {entry = myServer.borrow.get(currentUser);
+                        myServer.borrow.remove(currentUser);}
                     }
                 } else {
                     entry = new HashMap<>();
                     reply = "successful";
                 }
-                entry.put(requestedItem, numberOfDays);
-                myServer.borrow.put(currentUser, entry);
+                synchronized (lock) {entry.put(requestedItem, numberOfDays);
+                myServer.borrow.put(currentUser, entry);}
                 reply = "successful";
                     break;
 
@@ -123,7 +126,8 @@ class RequestHandler implements Runnable {
                     break;
                 }
                 itemName = request[2];
-                Iterator<Map.Entry<String,Item>> iterator = myServer.item.entrySet().iterator();
+                Iterator<Map.Entry<String,Item>> iterator;
+                synchronized (lock) {iterator = myServer.item.entrySet().iterator();}
                 while(iterator.hasNext()){
                     Map.Entry<String,Item> pair = iterator.next();
                     if(pair.getValue().getItemName().equals(itemName))
@@ -137,8 +141,9 @@ class RequestHandler implements Runnable {
                 }
                 userID = request[2];
                 itemID = request[3];
-                currentUser = myServer.user.get(userID);
-                Iterator<Map.Entry<Item,Integer>> value = myServer.borrow.get(currentUser).entrySet().iterator();
+                synchronized (lock) {currentUser = myServer.user.get(userID);}
+                Iterator<Map.Entry<Item,Integer>> value;
+                synchronized (lock) {value = myServer.borrow.get(currentUser).entrySet().iterator();}
                 if(!value.hasNext()){
                     reply = "unsuccessful";
                     break;
@@ -147,12 +152,14 @@ class RequestHandler implements Runnable {
                 while(value.hasNext()) {
                     Map.Entry<Item, Integer> pair = value.next();
                     if(pair.getKey().getItemID().equals(itemID)){
-                        myServer.borrow.get(currentUser).remove(pair.getKey());
-                        myServer.updateItemCount(itemID);
-                        Item currentItem = myServer.item.get(itemID);
-                        currentItem.setItemCount(currentItem.getItemCount()+1);
-                        myServer.item.remove(itemID);
-                        myServer.item.put(itemID,currentItem);
+                        synchronized (lock) {
+                            myServer.borrow.get(currentUser).remove(pair.getKey());
+                            myServer.updateItemCount(itemID);
+                            Item currentItem = myServer.item.get(itemID);
+                            currentItem.setItemCount(currentItem.getItemCount() + 1);
+                            myServer.item.remove(itemID);
+                            myServer.item.put(itemID, currentItem);
+                        }
                         reply = "successful";
                         status = true;
                         break;

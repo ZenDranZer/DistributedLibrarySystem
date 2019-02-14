@@ -6,6 +6,8 @@ import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.*;
 
+/**Main server class which implements all the methods of both the interfaces
+ * LibraryUserInterface and LibraryManagerInterface and extends UnicastRemoteObject.*/
 public class DLSServer extends UnicastRemoteObject implements LibraryUserInterface,LibraryManagerInterface {
 
     protected final HashMap<String,User> user;
@@ -19,6 +21,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
     private Integer next_Manager_ID;
     private File logFile;
     private PrintWriter logger;
+    private final Object lock;
 
     public String getLibrary() {
         return library;
@@ -35,6 +38,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         messagesForUser = new HashMap<>();
         next_User_ID = 1003;
         next_Manager_ID = 1002;
+        lock = new Object();
         logFile = new File("C:\\Users\\SARVESH\\Documents\\DistributedLibrarySystem\\src\\Logs\\log_" + library + ".log");
         try{
             if(!logFile.exists())
@@ -48,6 +52,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         init();
     }
 
+    /**Initialize the data structure with some values.*/
     private void init(){
         String initManagerID = library + "M" + 1001;
         Manager initManager = new Manager(initManagerID);
@@ -72,6 +77,11 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         writeToLogFile("Initial items created.");
     }
 
+    /**used to borrow an item by the user. If Item does not exist in the library it
+     * will send message to user for asking to borrow from other library and if none
+     * of the library has the book it will simply ask for adding the user into waiting
+     * queue, if user says yes it will add user into queue. If item borrowed successfully
+     * both server and client will keep the log.*/
     @Override
     public String borrowItem(String userID, String itemID, int numberOfDays) throws RemoteException {
         User currentUser = user.get(userID);
@@ -86,9 +96,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
 
         Item requestedItem;
-        synchronized (this){
         requestedItem = item.get(itemID);
-        }
         if(requestedItem.getItemCount() == 0){
             reply += "outsourced";
             writeToLogFile(reply);
@@ -96,27 +104,34 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }else {
             HashMap<Item,Integer> entry;
             requestedItem.setItemCount(requestedItem.getItemCount() - 1);
-            item.remove(itemID);
-            item.put(itemID, requestedItem);
+            synchronized (lock) {
+                item.remove(itemID);
+                item.put(itemID, requestedItem);
+            }
             if (borrow.containsKey(currentUser)) {
                 if (borrow.get(currentUser).containsKey(requestedItem)) {
                     reply += "Unsuccessful. \n Note : User have already borrowed.";
                     return reply;
                 } else {
                     entry = borrow.get(currentUser);
-                    borrow.remove(currentUser);
+                    synchronized (lock){
+                        borrow.remove(currentUser);
+                    }
                 }
             } else {
                 entry = new HashMap<>();
             }
             entry.put(requestedItem, numberOfDays);
-            borrow.put(currentUser, entry);
-            reply += "Successful.";
+            synchronized (lock) {
+                borrow.put(currentUser, entry);
+                reply += "Successful.";
+            }
             writeToLogFile(reply);
             return reply;
         }
     }
 
+    /**used to find the given item name in all library and return the itemID and availability.*/
     @Override
     public String findItem(String userID, String itemName) throws RemoteException {
         if(userID.charAt(3) != 'U') {
@@ -131,7 +146,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
 
         String reply = "";
-        Iterator<Map.Entry<String,Item>> iterator = item.entrySet().iterator();
+        Iterator<Map.Entry<String, Item>> iterator;
+        synchronized (lock) {
+            iterator = item.entrySet().iterator();
+        }
         while(iterator.hasNext()){
             Map.Entry<String,Item> pair = iterator.next();
             if(pair.getValue().getItemName().equals(itemName))
@@ -146,6 +164,9 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return reply;
     }
 
+    /**used to return the item borrowed by the user. If user has not borrowed any
+     * book return unsuccessful note. Returned book will be automatically given
+     * to those who are in the waiting queue.*/
     @Override
     public String returnItem(String userID, String itemID) throws RemoteException {
         User currentUser;
@@ -159,7 +180,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         else{
             message += "Unsuccessful. " +
                             "\nNote : You are not allowed to use this feature.";
-            writeToLogFile(message);
+             writeToLogFile(message);
             return message;
         }
 
@@ -169,7 +190,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
         if(borrow.containsKey(currentUser)){
         HashMap<Item,Integer> set = borrow.get(currentUser);
-        Iterator<Map.Entry<Item,Integer>> value = set.entrySet().iterator();
+        Iterator<Map.Entry<Item,Integer>> value;
+        synchronized (lock){ value = set.entrySet().iterator(); }
         if(!value.hasNext()){
             message +="Unsuccessful. " +
                     "\nNote : You have no borrowed item.";
@@ -179,7 +201,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         while(value.hasNext()) {
             Map.Entry<Item, Integer> pair = value.next();
             if(pair.getKey().getItemID().equals(itemID)){
-                borrow.get(currentUser).remove(pair.getKey());
+                synchronized (lock){borrow.get(currentUser).remove(pair.getKey());}
                 updateItemCount(itemID);
                 automaticAssignmentOfBooks(itemID);
                 message += "Successful ";
@@ -195,6 +217,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
 
     }
 
+    /**String addItem(String managerID, String itemID,String itemName, int quantity)*/
     @Override
     public String addItem(String managerID, String itemID,String itemName, int quantity) throws RemoteException {
         String message =
@@ -211,11 +234,11 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             if(item.containsKey(itemID)){
                 currentItem = item.get(itemID);
                 currentItem.setItemCount(currentItem.getItemCount()+quantity);
-                item.remove(itemID);
+                synchronized (lock){item.remove(itemID);}
             }else{
                 currentItem = new Item(itemID,itemName,quantity);
             }
-            item.put(itemID,currentItem);
+            synchronized (lock){item.put(itemID,currentItem);}
             message +=  " Item :" + itemID +
                     "Status : Successful.";
             automaticAssignmentOfBooks(itemID);
@@ -229,6 +252,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return message;
     }
 
+    /**used by the manager to remove the item completely or decrease the quantity of it.*/
     @Override
     public String removeItem(String managerID, String itemID, int quantity) throws RemoteException {
         String message =
@@ -250,29 +274,56 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             return message;
         }
         Item currentItem = item.get(itemID);
-        if(currentItem.getItemCount() < quantity){
-            quantity = quantity - currentItem.getItemCount();
+
+        if(quantity < 0){
             item.remove(itemID);
-            message+= "Partially successful." +
-                    "\nNote : Number of items in the inventory is less than desired quantity." +
-                    "\n Balance quantity :" + quantity;
+            waitingQueue.remove(currentItem);
+            Iterator<Map.Entry<User,HashMap<Item,Integer>>> iterator = borrow.entrySet().iterator();
+            while(iterator.hasNext()){
+                Map.Entry<User,HashMap<Item,Integer>> pair = iterator.next();
+                if(pair.getValue().containsKey(currentItem)){
+                    borrow.get(pair.getKey()).remove(currentItem);
+                    if(messagesForUser.containsKey(pair.getKey())){
+                        messagesForUser.get(pair.getKey()).add("The item " + itemID + " is being removed from library" +
+                                "and you no longer owe this item.");
+                    }else{
+                        ArrayList<String> messages = new ArrayList<>();
+                        messages.add("The item " + itemID + " is being removed from library" +
+                                "and you no longer owe this item.");
+                        messagesForUser.put(pair.getKey(),messages);
+                    }
+                }
+            }
+            message+= " Successful." +
+                    "\nNote : All items have been removed.";
+            writeToLogFile(message);
+            return message;
+        }else if(currentItem.getItemCount() < quantity){
+            quantity = quantity - currentItem.getItemCount();
+            synchronized (lock){item.remove(itemID);}
+            message+= " Partially successful." +
+                      "\nNote : Number of items in the inventory is less than desired quantity." +
+                      "\n Balance quantity :" + quantity;
             writeToLogFile(message);
             return message;
         }else if(currentItem.getItemCount() > quantity){
             currentItem.setItemCount(currentItem.getItemCount() - quantity);
-            item.remove(itemID);
-            item.put(itemID,currentItem);
+            synchronized (lock){
+                item.remove(itemID);
+                item.put(itemID,currentItem);
+            }
             message += "Successful.";
             writeToLogFile(message);
             return message;
         }else{
-            item.remove(itemID);
+            synchronized (lock){item.remove(itemID);}
             message += "Successful.";
             writeToLogFile(message);
             return message;
         }
     }
 
+    /**It shows all the available books in that library to the manager.*/
     @Override
     public String listItemAvailability(String managerID) throws RemoteException {
         if(managerID.charAt(3) != 'M') {
@@ -288,7 +339,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
                         " Manager : " + managerID +
                         "Status : Successful. " +
                         "\nAvailability:\n";
-        Iterator<Map.Entry<String,Item>> iterator = item.entrySet().iterator();
+        Iterator<Map.Entry<String,Item>> iterator;
+        synchronized (lock) { iterator = item.entrySet().iterator(); }
         while(iterator.hasNext()){
             Map.Entry<String,Item> pair = iterator.next();
             reply += pair.getValue().getItemName() + " " + pair.getValue().getItemCount() + "\n";
@@ -297,6 +349,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return reply;
     }
 
+    /**allows the manager to create a user for that library. It returns new userID.*/
     @Override
     public String createUser(String managerID) throws RemoteException {
         if(managerID.charAt(3) != 'M'){
@@ -310,8 +363,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
         String userID = library + "U" + next_User_ID ;
         User currentUser = new User(userID);
-        user.put(userID,currentUser);
-        next_User_ID += 1;
+        synchronized (lock) {user.put(userID,currentUser);
+        next_User_ID += 1;}
         String message =
                         "New User Request : Server : " + library +
                         " Manager : " + managerID +
@@ -321,6 +374,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return  message;
     }
 
+    /**allows the manager to create a manager for that library. It returns new managerID.*/
     @Override
     public String createManager(String managerID) throws RemoteException{
         if(managerID.charAt(3) != 'M'){
@@ -334,8 +388,8 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
         String newManagerID = library + "M" + next_Manager_ID ;
         Manager currentManager = new Manager(newManagerID);
-        manager.put(newManagerID,currentManager);
-        next_Manager_ID += 1;
+        synchronized (lock) {manager.put(newManagerID,currentManager);
+        next_Manager_ID += 1;}
         String message =
                         "New User Request : Server : " + library +
                         " Manager : " + managerID +
@@ -354,9 +408,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             return "false";
         }
         else if(id.charAt(3) == 'U'){
-            synchronized(this){
-            currentUser = user.get(id);
-            }
+            synchronized(lock){ currentUser = user.get(id); }
             String message;
             if(currentUser == null){
                 writeToLogFile("Validate ID request : ID : "+ id +" Status : Unsuccessful");
@@ -389,18 +441,19 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return "false";
     }
 
+    /**It adds the given userID to the waiting list for given itemID with numberOfDays.*/
     @Override
     public String addToQueue(String userID, String itemID,Integer numberOfDays) throws RemoteException {
         Item currentItem = item.get(itemID);
         User currentUser = user.get(userID);
         HashMap<User,Integer> waitingUsers = new HashMap<>();
         if(!waitingQueue.containsKey(currentItem)){
-            waitingQueue.put(currentItem,waitingUsers);
+            synchronized (lock) {waitingQueue.put(currentItem,waitingUsers);}
         }
-        waitingUsers = waitingQueue.get(currentItem);
+        synchronized (lock) {waitingUsers = waitingQueue.get(currentItem);
         waitingUsers.put(currentUser,numberOfDays);
         waitingUsers.remove(currentUser);
-        waitingQueue.put(currentItem,waitingUsers);
+        waitingQueue.put(currentItem,waitingUsers);}
         String message =
                 "Add to Queue Request : Server : " + library +
                         " User ID :" + userID +
@@ -410,9 +463,12 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return  message;
     }
 
+    /**It allows the user to borrow an item from other library. If not present
+     * at all libraries then it will ask user whether to add the user into the queue or not.*/
     @Override
     public String borrowFromOtherLibrary(String userID, String itemID, Integer numberOfDays){
-        User currentUser = user.get(userID);
+        User currentUser;
+        synchronized (lock) { currentUser = user.get(userID); }
         String reply =  "Borrow Request : Server : " + library +
                         " User : " + userID +
                         " Item :" + itemID +
@@ -430,8 +486,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             if (library.equals("CON")){
                 index1 = 1;
                 index2 = 2;
-                lib1 = currentUser.getOutsourced()[index1];
-                lib2 = currentUser.getOutsourced()[index2];
+                synchronized (lock) {
+                    lib1 = currentUser.getOutsourced()[index1];
+                    lib2 = currentUser.getOutsourced()[index2];
+                }
                 library1 = "MCG";
                 library2 = "MON";
                 port1 = 1302;
@@ -440,8 +498,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             if (library.equals("MCG")){
                 index1 = 0;
                 index2 = 2;
-                lib1 = currentUser.getOutsourced()[index1];
-                lib2 = currentUser.getOutsourced()[index2];
+                synchronized (lock) {
+                    lib1 = currentUser.getOutsourced()[index1];
+                    lib2 = currentUser.getOutsourced()[index2];
+                }
                 library1 = "CON";
                 library2 = "MON";
                 port1 = 1301;
@@ -450,8 +510,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             if (library.equals("MON")){
                 index1 = 0;
                 index2 = 1;
-                lib1 = currentUser.getOutsourced()[index1];
-                lib2 = currentUser.getOutsourced()[index2];
+                synchronized (lock) {
+                    lib1 = currentUser.getOutsourced()[index1];
+                    lib2 = currentUser.getOutsourced()[index2];
+                }
                 library1 = "CON";
                 library2 = "MCG";
                 port1 = 1301;
@@ -467,9 +529,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             }
             if(result.equals("successful")){
                 reply += result + " Delegated Library : " + library1 ;
-                boolean[] isOutsourced = currentUser.getOutsourced();
+                boolean[] isOutsourced;
+                synchronized (lock) {isOutsourced = currentUser.getOutsourced();}
                 isOutsourced[index1] = true;
-                currentUser.setOutsourced(isOutsourced);
+                synchronized (lock) {currentUser.setOutsourced(isOutsourced);}
             }else if(!lib2){
                 DatagramPacket sendRequest = new DatagramPacket(request.getBytes(),request.length(),host,port2);
                 mySocket.send(sendRequest);
@@ -482,9 +545,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
             if(result.equals("successful")){
                 System.out.println(result);
                 reply += result + " Delegated Library : " + library2 ;
-                boolean[] isOutsourced = currentUser.getOutsourced();
+                boolean[] isOutsourced;
+                synchronized (lock) {isOutsourced = currentUser.getOutsourced();}
                 isOutsourced[index2] = true;
-                currentUser.setOutsourced(isOutsourced);
+                synchronized (lock) {currentUser.setOutsourced(isOutsourced);}
             }
             else{
                 reply = "queue";
@@ -506,6 +570,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return reply;
     }
 
+    /**finds the given item name in other library and returns the itemID and availability.*/
     private String findAtOtherLibrary(String itemName){
         String reply = "";
         try{
@@ -555,6 +620,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return reply;
     }
 
+    /**it simply returns the given item to the library where it belongs to.*/
     private String returnToOtherLibrary(String userID, String itemID){
         String reply ="";
         try{
@@ -602,13 +668,15 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         return reply;
     }
 
-    protected void updateItemCount(String itemID){
+    /**it increases the item count by 1.*/
+    protected synchronized void updateItemCount(String itemID){
         Item currentItem = item.get(itemID);
         currentItem.setItemCount(currentItem.getItemCount()+1);
         item.remove(itemID);
         item.put(itemID,currentItem);
     }
 
+    /**to write the logs into log file.*/
     synchronized private void writeToLogFile(String message) {
         try {
             if (logger == null)
@@ -621,17 +689,23 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
         }
     }
 
+    /**to authenticate legal item id*/
     private boolean authenticateItemID(String id){
-        if(id.substring(0,3).equals(library) && id.length() == 7)
-            return true;
-        return false;
+        return id.substring(0, 3).equals(library) && id.length() == 7;
     }
 
+    /**If the returned item is in the waiting queue list, it will
+     * automatically assign the item to the first user and send
+     * a message to the user.*/
     private void automaticAssignmentOfBooks(String itemID) {
         Item currentItem = item.get(itemID);
         if(waitingQueue.containsKey(currentItem)){
-            HashMap<User,Integer> userList = waitingQueue.get(currentItem);
-            Iterator<Map.Entry<User,Integer>> iterator = userList.entrySet().iterator();
+            HashMap<User,Integer> userList;
+            Iterator<Map.Entry<User,Integer>> iterator;
+            synchronized (lock) {
+                userList = waitingQueue.get(currentItem);
+                iterator = userList.entrySet().iterator();
+            }
             if(iterator.hasNext()){
                 Map.Entry<User,Integer> pair = iterator.next();
                 User currentUser =  pair.getKey();
@@ -640,10 +714,10 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
                    borrowedItems = new HashMap<>();
                 }else{
                     borrowedItems = borrow.get(currentUser);
-                    borrow.remove(currentUser);
+                    synchronized (lock) {borrow.remove(currentUser);}
                 }
                 borrowedItems.put(currentItem,pair.getValue());
-                borrow.put(currentUser,borrowedItems);
+                synchronized (lock) {borrow.put(currentUser,borrowedItems);}
                 ArrayList<String> messages;
                 if(messagesForUser.containsKey(currentUser)){
                     messages = messagesForUser.get(currentUser);
@@ -651,7 +725,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
                     messages = new ArrayList<>();
                 }
                 String message = "Borrow Request Status : Successful UserID : " + currentUser.getUserID() +" ItemID : " + itemID;
-                messages.add(message);
+                synchronized (lock) {messages.add(message);}
                 writeToLogFile(message);
             }
         }

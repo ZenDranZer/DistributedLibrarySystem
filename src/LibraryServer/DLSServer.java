@@ -23,9 +23,7 @@ public class DLSServer extends UnicastRemoteObject implements LibraryUserInterfa
     private PrintWriter logger;
     private final Object lock;
 
-    public String getLibrary() {
-        return library;
-    }
+    public String getLibrary() {return library;}
 
     public DLSServer(String library) throws RemoteException{
         super();
